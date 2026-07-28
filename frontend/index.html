@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supply-Chain Reachability Dashboard</title>
+    
+    <!-- Google Fonts - Space Grotesk & Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Bespoke IDE Grid Style Sheet -->
+    <style>
+        :root {
+            --bg: #04060a;
+            --bg-gradient: radial-gradient(circle at center, #0a0e19 0%, #04060a 100%);
+            --console-bg: rgba(10, 14, 23, 0.65);
+            --text-primary: #f1f5f9;
+            --text-secondary: #64748b;
+            --teal: #14b8a6; /* Primary brand color */
+            --teal-glow: rgba(20, 184, 166, 0.2);
+            --purple: #8b5cf6; /* Secondary brand color */
+            --purple-glow: rgba(139, 92, 246, 0.15);
+            --border-color: rgba(255, 255, 255, 0.05);
+            
+            /* Threat levels badges */
+            --red: #f43f5e;
+            --red-glow: rgba(244, 63, 94, 0.2);
+            --amber: #f59e0b;
+            --amber-glow: rgba(245, 158, 11, 0.2);
+            --blue: #3b82f6;
+            --blue-glow: rgba(59, 130, 246, 0.15);
+            --green: #10b981;
+            --green-glow: rgba(16, 185, 129, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--bg);
+            background-image: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+            line-height: 1.5;
+            position: relative;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* Background Aurora Canvas */
+        #network-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* Container Layout */
+        .container {
+            width: 100%;
+            max-width: 1680px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header Section */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+        }
+
+        header h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #ffffff, var(--teal), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        header h1 svg.logo-icon {
+            width: 32px;
+            height: 32px;
+            -webkit-text-fill-color: initial;
+            align-self: center;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-top: 0.15rem;
+        }
+
+        /* Header actions (History trigger) */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .history-toggle-btn {
+            background: rgba(20, 184, 166, 0.06);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            color: #99f6e4;
+            padding: 0.5rem 1.1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .history-toggle-btn:hover {
+            background: var(--teal-glow);
+            border-color: var(--teal);
+            box-shadow: 0 0 10px var(--teal-glow);
+        }
+
+        /* Unified Desktop-Style Workspace Console Frame */
+        .workspace-console {
+            background: var(--console-bg);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 750px; /* Locks console height like a real desktop application */
+        }
+
+        /* Window Header bar */
+        .console-header {
+            background: rgba(8, 11, 20, 0.5);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.85rem 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .dot.red { background: #ff5f56; }
+        .dot.yellow { background: #ffbd2e; }
+        .dot.green { background: #27c93f; }
+
+        .console-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        /* Console workspace split layout divisions */
+        .console-workspace {
+            display: grid;
+            grid-template-columns: 310px 1.1fr 1.3fr;
+            flex-grow: 1;
+            overflow: hidden; /* Scrollbars are handled internally inside panels */
+        }
+
+        .workspace-panel {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .workspace-panel:not(:last-child) {
+            border-right: 1px solid var(--border-color);
+        }
+
+        .workspace-panel.left {
+            background: rgba(3, 5, 10, 0.15);
+        }
+
+        /* Panel Headers - structural purple underlines */
+        .panel-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            border-bottom: 2px solid var(--purple);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            letter-spacing: 0.02em;
+        }
+
+        /* Typographical Analytics Statistics Bar (Top of findings list) */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-num {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--teal);
+            line-height: 1.2;
+        }
+
+        .stat-num.alert {
+            color: var(--red);
+            text-shadow: 0 0 10px rgba(244, 63, 94, 0.2);
+        }
+
+        .stat-lbl {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+        }
+
+        /* Minimal Form Controls */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+        }
+
+        .form-group input {
+            background: rgba(2, 4, 10, 0.65);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.6rem 0.75rem;
+            color: var(--text-primary);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--teal);
+            box-shadow: 0 0 8px var(--teal-glow);
+        }
+
+        /* Filled Pill Action Button */
+        .btn {
+            background: var(--teal);
+            color: #030509; /* Dark text inside filled teal button */
+            border: none;
+            border-radius: 9999px;
+            padding: 0.75rem;
+            font-weight: 700;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(20, 184, 166, 0.25);
+            margin-top: 1rem;
+        }
+
+        .btn::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -150%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.4), transparent);
+            transform: skewX(-25deg);
+            transition: none;
+        }
+
+        .btn:hover::before {
+            left: 150%;
+            transition: left 0.8s ease-in-out;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: #0d9488; /* Darker teal on hover */
+            color: white;
+            box-shadow: 0 4px 20px rgba(13, 148, 136, 0.4);
+        }
+
+        .btn:disabled {
+            background: #1e293b;
+            color: #475569;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Scrollable findings table */
+        .table-wrapper {
+            flex-grow: 1;
+            overflow-y: auto;
+            max-height: 100%;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            padding: 0.6rem 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            padding: 0.8rem 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.8rem;
+        }
+
+        tr.finding-row {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        tr.finding-row:hover {
+            background: rgba(255, 255, 255, 0.015);
+        }
+
+        tr.finding-row.active {
+            background: rgba(20, 184, 166, 0.04);
+            box-shadow: inset 3px 0 0 var(--teal);
+        }
+
+        /* Package tags (Structural purple) */
+        .pkg-tag {
+            background: rgba(139, 92, 246, 0.08);
+            color: #c084fc;
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        /* Severity/Priority status badges */
+        .priority-badge {
+            display: inline-block;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.75rem;
+        }
+
+        .badge-critical { background: var(--red-glow); color: var(--red); border: 1px solid rgba(244, 63, 94, 0.2); }
+        .badge-high { background: var(--amber-glow); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.2); }
+        .badge-medium { background: var(--blue-glow); color: var(--blue); border: 1px solid rgba(59, 130, 246, 0.15); }
+        .badge-low { background: var(--green-glow); color: var(--green); border: 1px solid rgba(16, 185, 129, 0.15); }
+
+        .reach-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 9999px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .reach-yes {
+            background: rgba(244, 63, 94, 0.06);
+            color: var(--red);
+            border: 1px solid rgba(244, 63, 94, 0.12);
+        }
+
+        .reach-no {
+            background: rgba(16, 185, 129, 0.06);
+            color: var(--green);
+            border: 1px solid rgba(16, 185, 129, 0.12);
+        }
+
+        /* Detail intelligence pane */
+        .detail-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .detail-placeholder {
+            margin: auto;
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 2rem;
+        }
+
+        .detail-placeholder svg {
+            width: 36px;
+            height: 36px;
+            stroke: var(--text-secondary);
+            margin-bottom: 0.75rem;
+            opacity: 0.4;
+        }
+
+        .detail-header {
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .detail-header h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.25rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .detail-meta {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .cve-desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 1.25rem;
+            background: rgba(2, 4, 10, 0.35);
+            padding: 0.8rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            line-height: 1.5;
+        }
+
+        .reco-box {
+            background: rgba(20, 184, 166, 0.015);
+            border: 1px dashed rgba(20, 184, 166, 0.15);
+            border-radius: 8px;
+            padding: 0.8rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .reco-box h4 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.8rem;
+            color: var(--teal);
+            margin-bottom: 0.2rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* SVG flow trace styling */
+        .visualizer-section h4 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.9rem;
+            margin-bottom: 0.75rem;
+            color: var(--text-primary);
+        }
+
+        .call-path-flow {
+            background: rgba(2, 4, 10, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+        }
+
+        /* Slide-Out History Sidebar Panel drawer */
+        .history-sidebar {
+            position: fixed;
+            top: 0;
+            right: -380px; /* Hidden offscreen by default */
+            width: 380px;
+            height: 100%;
+            background: rgba(6, 8, 14, 0.95);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border-left: 1px solid var(--border-color);
+            z-index: 1000;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -15px 0 50px rgba(0, 0, 0, 0.7);
+            transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .history-sidebar.open {
+            right: 0;
+        }
+
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+
+        .sidebar-header h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .sidebar-close-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+        }
+
+        .sidebar-close-btn:hover {
+            color: var(--red);
+        }
+
+        .history-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            overflow-y: auto;
+            flex-grow: 1;
+            padding-right: 0.25rem;
+        }
+
+        .history-item {
+            background: rgba(2, 4, 10, 0.45);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .history-item:hover {
+            border-color: var(--teal);
+        }
+
+        .history-item.active {
+            border-color: var(--teal);
+            box-shadow: 0 0 10px var(--teal-glow);
+        }
+
+        .history-path {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 600;
+            word-break: break-all;
+            margin-bottom: 0.25rem;
+            padding-right: 1.5rem;
+            text-align: left;
+        }
+
+        .history-meta {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            stroke: var(--text-secondary);
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .delete-btn:hover {
+            background: rgba(244, 63, 94, 0.15);
+            stroke: var(--red);
+        }
+
+        /* IDE Status Bar footer */
+        .console-status-bar {
+            background: rgba(5, 7, 10, 0.8);
+            border-top: 1px solid var(--border-color);
+            padding: 0.45rem 1.25rem;
+            display: flex;
+            gap: 1.75rem;
+            align-items: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .status-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+            display: inline-block;
+        }
+
+        .status-indicator.active {
+            background: var(--teal);
+            box-shadow: 0 0 6px var(--teal);
+        }
+
+        .status-item.right {
+            margin-left: auto;
+            max-width: 450px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Spinner inside button */
+        .spinner {
+            border: 2px solid rgba(0, 0, 0, 0.15);
+            border-radius: 50%;
+            border-top: 2px solid #030509;
+            width: 14px;
+            height: 14px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    
+    <!-- Background Eased Liquid Aurora Canvas -->
+    <canvas id="network-canvas"></canvas>
+    
+    <!-- Slide-Out History Sidebar Drawer -->
+    <div id="historySidebar" class="history-sidebar">
+        <div class="sidebar-header">
+            <h3>Scan Logs History</h3>
+            <button id="sidebarCloseBtn" class="sidebar-close-btn" aria-label="Close sidebar">×</button>
+        </div>
+        <div class="history-grid" id="historyContainer">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+
+    <div class="container">
+        
+        <!-- Header -->
+        <header>
+            <div>
+                <h1>
+                    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <!-- Shield outline -->
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="rgba(20, 184, 166, 0.08)" stroke="var(--teal)"/>
+                        <!-- Inner AST node branch paths -->
+                        <path d="M12 8v5" stroke="var(--purple)" stroke-width="1.8"/>
+                        <path d="M9 11l3 2 3-2" stroke="var(--purple)" stroke-width="1.8"/>
+                        <circle cx="12" cy="8" r="1.5" fill="var(--teal)"/>
+                        <circle cx="9" cy="11" r="1.5" fill="var(--purple)"/>
+                        <circle cx="15" cy="11" r="1.5" fill="var(--purple)"/>
+                    </svg>
+                    Supply-Chain Reachability Auditor
+                </h1>
+                <div class="subtitle">AST-guided Software Composition Analysis (SCA) & Vulnerability Prioritization</div>
+            </div>
+            
+            <div class="header-actions">
+                <!-- History slide toggle button -->
+                <button id="historyToggleBtn" class="history-toggle-btn">
+                    <span>📜 Scan History</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- macOS-Style Workspace Console IDE Frame -->
+        <div class="workspace-console">
+            
+            <!-- Traffic lights bar -->
+            <div class="console-header">
+                <div class="window-controls">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                </div>
+                <div class="console-title">
+                    <span>AUDITOR_WORKSPACE_IDE</span>
+                </div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.35rem;">
+                    <span>CONSOLE:</span>
+                    <span id="consoleStatus" style="color: var(--teal); font-weight: 600; text-transform: uppercase;">READY</span>
+                </div>
+            </div>
+
+            <!-- Main Work Split Grid -->
+            <div class="console-workspace">
+                
+                <!-- Panel 1: Settings Config -->
+                <aside class="workspace-panel left">
+                    <div class="panel-title">Configuration</div>
+                    <form id="scanForm" style="display: flex; flex-direction: column; height: 100%;">
+                        <div class="form-group">
+                            <label for="repoPath">Target Project Folder</label>
+                            <input type="text" id="repoPath" placeholder="e.g. C:\projects\my_app">
+                        </div>
+                        <div class="form-group">
+                            <label for="reqPath">Requirements File</label>
+                            <input type="text" id="reqPath" placeholder="e.g. C:\projects\my_app\requirements.txt">
+                        </div>
+                        <div class="form-group">
+                            <label for="entryPoint">Entry Point Function</label>
+                            <input type="text" id="entryPoint" placeholder="e.g. main">
+                        </div>
+                        <button type="submit" class="btn" id="scanBtn">
+                            <span>Scan Project</span>
+                        </button>
+                    </form>
+                </aside>
+
+                <!-- Panel 2: Findings event feed -->
+                <main class="workspace-panel center">
+                    <div class="panel-title">
+                        <span>Findings Feed</span>
+                        <span id="findingsCount" style="color: var(--text-secondary); font-size: 0.75rem; font-weight: normal;">0 items</span>
+                    </div>
+                    
+                    <!-- Typographical Analytics Bar -->
+                    <div class="stats-bar">
+                        <div class="stat-item">
+                            <span class="stat-num" id="statScanned">0</span>
+                            <span class="stat-lbl">Scanned Pkgs</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-num" id="statTotal">0</span>
+                            <span class="stat-lbl">Total CVEs</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-num alert" id="statReachable">0</span>
+                            <span class="stat-lbl">Reachable</span>
+                        </div>
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Package</th>
+                                    <th>CVE ID</th>
+                                    <th>Reachability</th>
+                                    <th>Priority</th>
+                                </tr>
+                            </thead>
+                            <tbody id="findingsTableBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </main>
+
+                <!-- Panel 3: Intelligence Details -->
+                <section class="workspace-panel right">
+                    <div class="panel-title">
+                        <span>Threat Intelligence Details</span>
+                    </div>
+                    <div id="detailContainer" class="detail-container">
+                        <div class="detail-placeholder">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="16" x2="12" y2="12"></line>
+                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                            </svg>
+                            <p>Select a vulnerability from the table to view execution paths and remediation steps.</p>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+
+            <!-- IDE Status Bar footer -->
+            <footer class="console-status-bar">
+                <span class="status-item">
+                    <span class="status-indicator active"></span> CORE ENGINE: v1.1.2
+                </span>
+                <span class="status-item">DATABASE CACHE: ACTIVE</span>
+                <span class="status-item">NVD API: CONNECTED</span>
+                <span class="status-item right" id="statusBarTarget">TARGET: C:\...</span>
+            </footer>
+
+        </div>
+
+    </div>
+
+    <!-- Load Frontend Script -->
+    <script src="app.js?v=9"></script>
+</body>
+</html>

@@ -1,13 +1,8 @@
 """
 reachability_engine.py
 
-Connects the call graph (Week 2) with dependency + CVE data (Week 1) to
-answer: "is this vulnerable package actually called from reachable code?"
-
-Honest scope note: NVD data usually doesn't tell us the EXACT vulnerable
-function name -- so this checks package-level reachability (is any function
-from this package called in the reachable call graph), not function-level.
-This is documented as a known simplification, not a hidden gap.
+Connects the call graph with dependency + CVE data to answer:
+"is this vulnerable package actually called from reachable code?"
 """
 
 from dataclasses import dataclass
@@ -30,12 +25,21 @@ def check_package_reachability(
 
     Matches on calls like "requests.get" -> package "requests"
     """
-    reachable_functions = graph.get_reachable_functions(entry_point)
+    try:
+        reachable_functions = graph.get_reachable_functions(entry_point)
+    except ValueError:
+        # If the entry point isn't found in the codebase
+        return ReachabilityResult(
+            package_name=package_name,
+            is_reachable=False,
+            call_sites=[]
+        )
 
     call_sites = []
     for func_name in reachable_functions:
-        # A call like "requests.get" starts with "requests."
-        if func_name.startswith(f"{package_name}."):
+        # Check if the function name matches the package name prefix
+        # e.g., 'requests.get' starts with 'requests.'
+        if func_name == package_name or func_name.startswith(f"{package_name}."):
             call_sites.append(func_name)
 
     return ReachabilityResult(
@@ -47,15 +51,16 @@ def check_package_reachability(
 
 if __name__ == "__main__":
     import sys
-    from framework.ast_parser import parse_python_file
+    from framework.ast_parser import parse_directory
 
     if len(sys.argv) != 4:
-        print("Usage: python reachability_engine.py <file.py> <entry_point> <package_name>")
+        print("Usage: python reachability_engine.py <directory_path> <entry_point> <package_name>")
         sys.exit(1)
 
-    file_path, entry_point, package_name = sys.argv[1], sys.argv[2], sys.argv[3]
+    dir_path, entry_point, package_name = sys.argv[1], sys.argv[2], sys.argv[3]
 
-    functions = parse_python_file(file_path)
+    # Parse all files in the directory
+    functions = parse_directory(dir_path)
     graph = CallGraph(functions)
 
     result = check_package_reachability(graph, entry_point, package_name)

@@ -1,38 +1,41 @@
 """
 call_graph_builder.py
 
-Takes the function info from ast_parser.py and builds an actual graph
-structure: nodes = functions, edges = "this function calls that function."
+Takes the function definitions and calls from ast_parser.py and constructs
+a global call graph (nodes = functions, edges = calls).
 
-Then provides a reachability check: starting from an entry point (like
-main()), which functions can actually be reached by following calls?
+Provides reachability logic using BFS, allowing us to query if any path
+exists from a main entry point to a target function or package.
 """
 
-from framework.ast_parser import parse_python_file, FunctionInfo
+from framework.ast_parser import parse_directory, FunctionInfo
 
 
 class CallGraph:
     def __init__(self, functions: dict[str, FunctionInfo]):
         self.functions = functions
-        # adjacency list: function_name -> list of function names it calls
+        # Adjacency list: function_name -> list of function names it calls
         self.edges: dict[str, list[str]] = {
             name: info.calls_made for name, info in functions.items()
         }
 
     def get_reachable_functions(self, entry_point: str) -> set[str]:
         """
-        Starting from entry_point, follow every call chain and return
-        the set of all function names that are reachable.
-
-        Uses BFS (Breadth-First Search) -- start at entry_point, visit
-        everything it calls, then everything those calls, and so on,
-        until no new functions are found.
+        Starting from an entry_point function, follow every call chain
+        and return the set of all reachable function names.
+        
+        Handles both simple names (e.g., 'main') and fully qualified names
+        (e.g., 'sample_app.main') by dynamically resolving the entry point.
         """
-        if entry_point not in self.functions:
-            raise ValueError(f"'{entry_point}' is not a known function in this codebase.")
+        resolved_entry = self._resolve_entry_point(entry_point)
+        if not resolved_entry:
+            raise ValueError(
+                f"'{entry_point}' could not be resolved in the parsed codebase. "
+                f"Available functions are: {list(self.functions.keys())}"
+            )
 
         visited: set[str] = set()
-        queue: list[str] = [entry_point]
+        queue: list[str] = [resolved_entry]
 
         while queue:
             current = queue.pop(0)
@@ -40,7 +43,9 @@ class CallGraph:
                 continue
             visited.add(current)
 
-            # look at everything `current` calls
+            # Look at everything `current` calls.
+            # If it calls a function outside our codebase (e.g., 'requests.get'),
+            # it won't be a node in `self.edges`, so we default to an empty list.
             for called_name in self.edges.get(current, []):
                 if called_name not in visited:
                     queue.append(called_name)
@@ -49,32 +54,65 @@ class CallGraph:
 
     def is_reachable(self, entry_point: str, target_function: str) -> bool:
         """
-        Convenience check: can `target_function` be reached from `entry_point`?
+        Checks if target_function is reachable from the entry_point.
         """
-        reachable = self.get_reachable_functions(entry_point)
-        return target_function in reachable
+        try:
+            reachable = self.get_reachable_functions(entry_point)
+            return target_function in reachable
+        except ValueError:
+            return False
+
+    def _resolve_entry_point(self, entry_point: str) -> str | None:
+        """
+        Resolves a shorthand entry point (like 'main') to its fully qualified
+        counterpart (like 'sample_app.main') if it exists in our parsed functions.
+        """
+        # Case 1: Exact match (e.g., user passed 'sample_app.main')
+        if entry_point in self.functions:
+            return entry_point
+
+        # Case 2: Shorthand match (e.g., user passed 'main', matches 'sample_app.main')
+        candidates = []
+        for name in self.functions.keys():
+            if name.endswith(f".{entry_point}"):
+                candidates.append(name)
+
+        if len(candidates) == 1:
+            return candidates[0]
+        elif len(candidates) > 1:
+            # Ambiguous: multiple functions with the same name in different modules
+            # e.g., 'auth.login' and 'admin.login'. Fallback to first, or require qualification.
+            print(f"[warn] Multiple entry point candidates found for '{entry_point}': {candidates}. Choosing {candidates[0]}")
+            return candidates[0]
+
+        return None
 
 
 if __name__ == "__main__":
     import sys
 
     if len(sys.argv) != 3:
-        print("Usage: python call_graph_builder.py <path_to_python_file> <entry_point_function>")
+        print("Usage: python call_graph_builder.py <path_to_directory> <entry_point_function>")
         sys.exit(1)
 
-    file_path = sys.argv[1]
+    dir_path = sys.argv[1]
     entry_point = sys.argv[2]
 
-    functions = parse_python_file(file_path)
+    # Parse all files in the directory
+    functions = parse_directory(dir_path)
     graph = CallGraph(functions)
 
-    reachable = graph.get_reachable_functions(entry_point)
-
-    print(f"Starting from '{entry_point}', reachable functions are:\n")
-    for name in reachable:
-        print(f"  - {name}")
-
-    print(f"\nAll functions in file: {list(functions.keys())}")
-    unreachable = set(functions.keys()) - reachable
-    if unreachable:
-        print(f"\nUnreachable from '{entry_point}': {list(unreachable)}")
+    try:
+        reachable = graph.get_reachable_functions(entry_point)
+        print(f"\nStarting from '{entry_point}', reachable functions are:")
+        for name in sorted(reachable):
+            print(f"  - {name}")
+        
+        all_funcs = set(functions.keys())
+        unreachable = all_funcs - reachable
+        if unreachable:
+            print("\nUnreachable internal functions (dead code):")
+            for name in sorted(unreachable):
+                print(f"  - {name}")
+    except ValueError as e:
+        print(f"Error: {e}")
